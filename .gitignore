@@ -1,0 +1,28 @@
+﻿# Datos - NO subir los videos del PUCP
+modelo/data/*
+!modelo/data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Modelos grandes de entrenamiento
+*.h5
+*.keras
+*.pkl
+
+# Flutter / Dart
+app/build/
+app/.dart_tool/
+*.iml
+
+# VS Code
+.vscode/
+
+# Sistema
+Thumbs.db
+.DS_Store
