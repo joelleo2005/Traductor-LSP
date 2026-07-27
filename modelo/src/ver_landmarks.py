@@ -1,5 +1,6 @@
 import cv2
 import mediapipe as mp
+from modelo.src.eaf import leer_anotaciones
 
 # MediaPipe Holistic detecta cuerpo + manos + cara en un solo modelo
 mp_holistic = mp.solutions.holistic
@@ -7,13 +8,19 @@ mp_drawing = mp.solutions.drawing_utils
 
 # Ruta a UN video de prueba (ajústala a donde tengas el dataset)
 video_path = r"C:\Users\Joel\Downloads\2015-2023_LSP_peru1235_PUCP305_glosas (1)\5. Segundo avance (corregido)\ABRIR\ABRIR_1.mp4"
+eaf_path = r"C:\Users\Joel\Downloads\2015-2023_LSP_peru1235_PUCP305_glosas (1)\5. Segundo avance (corregido)\ABRIR\ABRIR_1.eaf"
 
 cap = cv2.VideoCapture(video_path)
 
 with mp_holistic.Holistic(min_detection_confidence=0.5,
                           min_tracking_confidence=0.5) as holistic:
+
+    anotaciones_eaf = leer_anotaciones(eaf_path)  # <-- aquí se leen las anotaciones del archivo .eaf
+    # 0 = Texto de traduccion , 1 = ms de inicio , 2 = ms de fin
+
     while cap.isOpened():
         ret, frame = cap.read()
+
         if not ret:
             break  # se acabó el video
 
