@@ -8,9 +8,9 @@ from eaf import leer_anotaciones
 
 # ===== CONFIGURACIÓN =====
 DATASET_DIR = r"C:\Users\Joel\Downloads\2015-2023_LSP_peru1235_PUCP305_glosas (1)\5. Segundo avance (corregido)"
-SALIDA_DIR  = "data"      # se guarda en modelo/data (Git lo ignora)
-N_FRAMES    = 30          # longitud fija de cada secuencia
-MAX_CARPETAS = None        # <-- PRUEBA con pocas; luego pon None para las 142
+SALIDA_DIR  = "data"
+N_FRAMES    = 30
+MAX_CARPETAS = None
 
 mp_holistic = mp.solutions.holistic
 
@@ -19,33 +19,32 @@ def ajustar_longitud(secuencia, n=N_FRAMES):
     secuencia = np.array(secuencia)
     if len(secuencia) == 0:
         return np.zeros((n, 258))
-    idx = np.linspace(0, len(secuencia) - 1, n).astype(int)  # n frames equiespaciados
+    idx = np.linspace(0, len(secuencia) - 1, n).astype(int)
     return secuencia[idx]
 
 
-def procesar_video(ruta_mp4, ruta_eaf, holistic):
-    # Ventana de tiempo de la seña (del .eaf); si no hay, usa todo el video
-    ini = fin = None
-    if os.path.exists(ruta_eaf):
-        anot = leer_anotaciones(ruta_eaf)
-        if anot:
-            _, ini, fin = anot[0]
-
+def keypoints_por_frame(ruta_mp4, holistic):
+    """Procesa TODO el video una vez -> [(t_ms, keypoints), ...]."""
     cap = cv2.VideoCapture(ruta_mp4)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    secuencia, i = [], 0
+    frames, i = [], 0
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        t = i / fps * 1000  # ms del frame actual
-        if ini is None or ini <= t <= fin:
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = holistic.process(image)
-            secuencia.append(extraer_keypoints(results))
+        t = i / fps * 1000
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = holistic.process(image)
+        frames.append((t, extraer_keypoints(results)))
         i += 1
     cap.release()
-    return ajustar_longitud(secuencia)
+    return frames
+
+
+def recortar(frames, ini, fin):
+    """Secuencia (30,258) del tramo [ini, fin] ms."""
+    sub = [kp for (t, kp) in frames if ini <= t <= fin]
+    return ajustar_longitud(sub)
 
 
 def main():
@@ -53,26 +52,47 @@ def main():
                       if os.path.isdir(os.path.join(DATASET_DIR, d)))
     if MAX_CARPETAS:
         carpetas = carpetas[:MAX_CARPETAS]
+    clases = set(carpetas)
 
     X, y = [], []
     with mp_holistic.Holistic(min_detection_confidence=0.5,
                               min_tracking_confidence=0.5) as holistic:
         for seña in carpetas:
             ruta = os.path.join(DATASET_DIR, seña)
-            videos = [v for v in glob.glob(os.path.join(ruta, "*.mp4"))
-                      if "ORACION" not in os.path.basename(v).upper()]
-            print(f"Procesando '{seña}' ({len(videos)} videos)...")
-            for ruta_mp4 in videos:
-                ruta_eaf = ruta_mp4.replace(".mp4", ".eaf")
-                X.append(procesar_video(ruta_mp4, ruta_eaf, holistic))
-                y.append(seña)   # etiqueta = nombre de la carpeta
+            videos = glob.glob(os.path.join(ruta, "*.mp4"))
+            aislados  = [v for v in videos if "ORACION" not in os.path.basename(v).upper()]
+            oraciones = [v for v in videos if "ORACION" in os.path.basename(v).upper()]
+            print(f"'{seña}': {len(aislados)} aislados + {len(oraciones)} oraciones")
+
+            # --- Videos de seña aislada ---
+            for v in aislados:
+                frames = keypoints_por_frame(v, holistic)
+                anot = leer_anotaciones(v.replace(".mp4", ".eaf"))
+                if anot:
+                    _, ini, fin = anot[0]
+                    sec = recortar(frames, ini, fin)
+                else:
+                    sec = ajustar_longitud([kp for _, kp in frames])
+                X.append(sec); y.append(seña)
+
+            # --- Videos de oración: extraemos cada seña-clase que contengan ---
+            for v in oraciones:
+                eaf = v.replace(".mp4", ".eaf")
+                if not os.path.exists(eaf):
+                    continue
+                frames = keypoints_por_frame(v, holistic)
+                for etiqueta, ini, fin in leer_anotaciones(eaf):
+                    base = etiqueta.rsplit("_", 1)[0]     # "AMIGO_1" -> "AMIGO"
+                    if base in clases:                    # solo si es una de nuestras señas
+                        sec = recortar(frames, ini, fin)
+                        X.append(sec); y.append(base)
 
     X, y = np.array(X), np.array(y)
     os.makedirs(SALIDA_DIR, exist_ok=True)
     np.save(os.path.join(SALIDA_DIR, "X.npy"), X)
     np.save(os.path.join(SALIDA_DIR, "y.npy"), y)
     print(f"\nListo. X={X.shape}  y={y.shape}")
-    print("Señas:", sorted(set(y)))
+    print("Clases:", len(set(y)))
 
 
 if __name__ == "__main__":

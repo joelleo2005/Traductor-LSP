@@ -15,8 +15,9 @@ cap = cv2.VideoCapture(video_path)
 with mp_holistic.Holistic(min_detection_confidence=0.5,
                           min_tracking_confidence=0.5) as holistic:
 
-    anotaciones_eaf = leer_anotaciones(eaf_path)  # <-- aquí se leen las anotaciones del archivo .eaf
+    #anotaciones_eaf = leer_anotaciones(eaf_path)  # <-- aquí se leen las anotaciones del archivo .eaf
     # 0 = Texto de traduccion , 1 = ms de inicio , 2 = ms de fin
+    #cap.set(cv2.CAP_PROP_POS_MSEC, anotaciones_eaf[1])  # <-- aquí se posiciona el video en el tiempo de inicio de la anotación
 
     while cap.isOpened():
         ret, frame = cap.read()
