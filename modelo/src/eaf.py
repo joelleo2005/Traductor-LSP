@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-def leer_anotaciones(ruta_eaf, tier_id="TRADUCCION"):
+def leer_anotaciones(ruta_eaf, tier_id="GLOSA_IA"):
     """Lee un .eaf y devuelve [(etiqueta, inicio_ms, fin_ms), ...] de la capa indicada."""
     raiz = ET.parse(ruta_eaf).getroot()
 
@@ -8,7 +8,7 @@ def leer_anotaciones(ruta_eaf, tier_id="TRADUCCION"):
     tiempos = {s.get("TIME_SLOT_ID"): int(s.get("TIME_VALUE"))
                for s in raiz.iter("TIME_SLOT")}
 
-    # 2. Recorrer las capas y quedarnos con la que nos interesa (TRADUCCION)
+    # 2. Recorrer las capas y quedarnos con la que nos interesa (GLOSA_IA)
     anotaciones = []
     for tier in raiz.iter("TIER"):
         if tier.get("TIER_ID") != tier_id:

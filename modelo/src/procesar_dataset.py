@@ -67,7 +67,8 @@ def main():
             # --- Videos de seña aislada ---
             for v in aislados:
                 frames = keypoints_por_frame(v, holistic)
-                anot = leer_anotaciones(v.replace(".mp4", ".eaf"))
+                eaf = v.replace(".mp4", ".eaf")
+                anot = leer_anotaciones(eaf) if os.path.exists(eaf) else []
                 if anot:
                     _, ini, fin = anot[0]
                     sec = recortar(frames, ini, fin)
