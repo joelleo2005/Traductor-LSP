@@ -16,3 +16,4 @@ for v in oraciones:
     for etiqueta, ini, fin in anots:
         base = etiqueta.rsplit("_", 1)[0]
         print(f"   {etiqueta} -> base='{base}'  ¿en clases? {base in clases}")
+        

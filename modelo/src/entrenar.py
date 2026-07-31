@@ -4,7 +4,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, GlobalAveragePooling1D, BatchNormalization
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping
 
@@ -46,13 +46,18 @@ print("Train tras augmentation:", X_train.shape)
 y_train = to_categorical(ytr, num_classes=n_clases)
 y_test  = to_categorical(yte, num_classes=n_clases)
 
-# 6. Modelo LSTM (chico y regularizado)
+# 6. Modelo Conv1D (convierte limpio a TFLite, sin Flex)
 model = Sequential([
-    LSTM(48, return_sequences=True, activation="tanh",
-         kernel_regularizer=l2(1e-4), input_shape=(30, 258)),
+    Conv1D(64, 3, activation="relu", padding="same",
+           kernel_regularizer=l2(1e-4), input_shape=(30, 258)),
+    BatchNormalization(),
+    MaxPooling1D(2),
+    Conv1D(128, 3, activation="relu", padding="same",
+           kernel_regularizer=l2(1e-4)),
+    BatchNormalization(),
+    GlobalAveragePooling1D(),
     Dropout(0.5),
-    LSTM(48, return_sequences=False, activation="tanh",
-         kernel_regularizer=l2(1e-4)),
+    Dense(64, activation="relu"),
     Dropout(0.5),
     Dense(n_clases, activation="softmax"),
 ])
