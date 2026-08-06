@@ -4,7 +4,13 @@ allprojects {
         mavenCentral()
     }
 }
-
+subprojects {
+    afterEvaluate {
+        if (configurations.findByName("implementation") != null) {
+            dependencies.add("implementation", "androidx.concurrent:concurrent-futures:1.2.0")
+        }
+    }
+}
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
