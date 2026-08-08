@@ -142,6 +142,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.35"
+  flutter_pose_detection:
+    dependency: "direct main"
+    description:
+      name: flutter_pose_detection
+      sha256: "0ea64e9823f5fd9c2541ebcbe973e981e4551390b7be6dbc89b9f18611fade01"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter

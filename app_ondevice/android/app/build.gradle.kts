@@ -5,6 +5,13 @@ plugins {
 }
 
 android {
+    configurations.all {
+        resolutionStrategy {
+            force("org.tensorflow:tensorflow-lite:2.16.1")
+            force("org.tensorflow:tensorflow-lite-api:2.16.1")
+            force("org.tensorflow:tensorflow-lite-gpu:2.16.1")
+        }
+    }
     namespace = "com.example.app_ondevice"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -19,7 +26,7 @@ android {
         applicationId = "com.example.app_ondevice"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 31
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
