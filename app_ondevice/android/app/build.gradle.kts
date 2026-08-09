@@ -6,11 +6,9 @@ plugins {
 
 android {
     configurations.all {
-        resolutionStrategy {
-            force("org.tensorflow:tensorflow-lite:2.16.1")
-            force("org.tensorflow:tensorflow-lite-api:2.16.1")
-            force("org.tensorflow:tensorflow-lite-gpu:2.16.1")
-        }
+            exclude(group = "org.tensorflow", module = "tensorflow-lite")
+            exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+            exclude(group = "org.tensorflow", module = "tensorflow-lite-gpu")
     }
     namespace = "com.example.app_ondevice"
     compileSdk = flutter.compileSdkVersion

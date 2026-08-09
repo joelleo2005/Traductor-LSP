@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   hand_landmarker: ^3.0.1
   flutter_pose_detection: ^0.4.1
+  tflite_flutter: ^0.12.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
