@@ -7,12 +7,12 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, GlobalAveragePooling1D, BatchNormalization
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping
-
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from normalizar import normalizar
 from augmentation import aumentar
 
 # ===== CONFIGURACIÓN =====
-SEÑAS_USAR = {"YO","PENSAR","MUJER","HOMBRE","CASA","VER","ESPERAR","CAMINAR","QUÉ","MAMÁ"}
+SEÑAS_USAR = {"YO","PENSAR","MUJER","HOMBRE","CASA","VER","ESPERAR","CAMINAR","QUE","MAMA"}
 N_COPIAS_AUG = 8
 EPOCHS       = 150
 
@@ -61,9 +61,10 @@ model = Sequential([
 model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
 
 # 7. Entrenar
-early = EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True)
+early = EarlyStopping(monitor="val_loss", patience=30, restore_best_weights=True)
+reduce_lr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5)
 model.fit(X_train, y_train, validation_data=(X_test, y_test),
-          epochs=EPOCHS, batch_size=16, callbacks=[early])
+          epochs=200, batch_size=16, callbacks=[early, reduce_lr])
 
 # 8. Evaluar
 loss, acc = model.evaluate(X_test, y_test)

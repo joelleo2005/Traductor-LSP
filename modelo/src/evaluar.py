@@ -1,13 +1,12 @@
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 import tensorflow as tf
 
 from normalizar import normalizar
 
-SEÑAS_USAR = {"YO","PENSAR","MUJER","HOMBRE","CASA","VER","ESPERAR","CAMINAR","QUÉ","MAMÁ"}
-
+SEÑAS_USAR = {"YO","PENSAR","MUJER","HOMBRE","CASA","VER","ESPERAR","CAMINAR","QUE","MAMA"}
 X = np.load("data/X.npy")
 y = np.load("data/y.npy")
 X = normalizar(X)
@@ -25,3 +24,9 @@ model = tf.keras.models.load_model("data/modelo_lsp.keras")
 pred = np.argmax(model.predict(X_test), axis=1)
 
 print(classification_report(yte, pred, target_names=le.classes_, zero_division=0))
+
+print("\n=== Matriz de confusión (fila = real, columna = predicho) ===")
+print("Orden:", list(le.classes_))
+cm = confusion_matrix(yte, pred)
+for i, fila in enumerate(cm):
+    print(f"{le.classes_[i]:>10}: {list(fila)}")

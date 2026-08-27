@@ -37,6 +37,7 @@ dependencies:
   hand_landmarker: ^3.0.1
   flutter_pose_detection: ^0.4.1
   tflite_flutter: ^0.12.1
+  path_provider: ^2.1.6
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,12 +54,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
 
+  assets:
+    - assets/modelo_lsp.tflite
+    - assets/clases.txt
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
