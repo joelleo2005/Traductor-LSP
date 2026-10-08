@@ -1,6 +1,7 @@
 ﻿# Datos - NO subir los videos del PUCP
 modelo/data/*
 !modelo/data/.gitkeep
+modelo/old/*
 
 # Python
 __pycache__/
