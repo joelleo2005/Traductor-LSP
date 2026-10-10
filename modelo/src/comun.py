@@ -1,13 +1,4 @@
-"""
-Partes comunes a entrenar_conv1d.py y entrenar_conv2d.py.
 
-Aquí está todo lo que NO debe cambiar entre los dos modelos, para que la comparación sea justa:
-  - mismos datos (data/X.npy de PeruSIL + Aprendo + PUCP) y las mismas 10 señas
-  - misma partición: 80 % entrenamiento / 20 % prueba, estratificada (artículo, sección 5.2)
-  - la validación para Early Stopping sale del 80 % de entrenamiento (15 %), NO de la prueba
-  - mismo aumento de datos (solo en entrenamiento) y mismo entrenamiento / evaluación
-Con la misma semilla, los dos scripts obtienen EXACTAMENTE las mismas muestras de prueba.
-"""
 import argparse
 import time
 
@@ -27,7 +18,6 @@ SEÑAS_USAR = {"YO", "PENSAR", "MUJER", "MAMA", "QUE", "VER", "COMER", "BIEN", "
 N_COPIAS_AUG = 8
 EPOCHS = 200
 BATCH = 16
-PACIENCIA = 30
 VAL_SIZE = 0.15     # fracción del 80 % de entrenamiento usada como validación
 
 
@@ -94,7 +84,6 @@ def entrenar_y_evaluar(nombre, model, Xtr, ytr, Xva, yva, Xte, yte, clases, guar
     print("=" * 70)
     model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
     callbacks = [
-        keras.callbacks.EarlyStopping(monitor="val_loss", patience=PACIENCIA, restore_best_weights=True),
         keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5),
     ]
     t0 = time.time()
@@ -111,7 +100,9 @@ def entrenar_y_evaluar(nombre, model, Xtr, ytr, Xva, yva, Xte, yte, clases, guar
     print(f"\n>>> {nombre}: precisión en test = {acc * 100:.1f}%  |  F1 macro = {f1 * 100:.1f}%  "
           f"|  {epocas} épocas en {minutos:.1f} min")
     print(classification_report(yte, pred, target_names=clases, digits=2, zero_division=0))
-    imprimir_matriz(confusion_matrix(yte, pred), clases)
+    cm = confusion_matrix(yte, pred, labels=list(range(n)))
+    imprimir_matriz(cm, clases)
+    rep = classification_report(yte, pred, target_names=clases, zero_division=0, output_dict=True)
 
     tfl = a_tflite(model)
     ms = latencia_tflite(tfl, Xte)
@@ -121,7 +112,8 @@ def entrenar_y_evaluar(nombre, model, Xtr, ytr, Xva, yva, Xte, yte, clases, guar
         with open(f"data/modelo_{nombre}.tflite", "wb") as f:
             f.write(tfl)
     return {"acc": acc, "f1": f1, "epocas": epocas, "min": minutos,
-            "params": model.count_params(), "kb": len(tfl) / 1024, "ms": ms}
+            "params": model.count_params(), "kb": len(tfl) / 1024, "ms": ms,
+            "por_sena": {c: rep[c] for c in clases}, "cm": cm, "hist": hist.history}
 
 
 def ejecutar(nombre, construir_modelo, preparar_entrada):
@@ -143,7 +135,7 @@ def ejecutar(nombre, construir_modelo, preparar_entrada):
             preparar_entrada(X_tr), y_tr, preparar_entrada(X_va), y_va, preparar_entrada(X_te), y_te,
             clases, guardar=(k == 0)))
 
-    # ---- resumen de este modelo + CSV (lo lee comparar.py)
+    # ---- resumen de este modelo + CSV (los lee comparar.py)
     a = np.array([r["acc"] for r in resultados]) * 100
     f = np.array([r["f1"] for r in resultados]) * 100
     print("\n" + "=" * 70 + f"\n RESUMEN {nombre.upper()} ({len(resultados)} semilla(s), conjunto de prueba)\n" + "=" * 70)
@@ -156,4 +148,23 @@ def ejecutar(nombre, construir_modelo, preparar_entrada):
                       f"{r['params']},{r['kb']:.1f},{r['ms']:.3f}")
     with open(f"data/resultados_{nombre}.csv", "w", encoding="utf-8") as fh:
         fh.write("\n".join(lineas) + "\n")
-    print(f"\nGuardado: data/resultados_{nombre}.csv, data/modelo_{nombre}.(keras|tflite)")
+    with open(f"data/por_sena_{nombre}.csv", "w", encoding="utf-8") as fh:
+        fh.write("modelo,semilla,sena,precision,recall,f1,soporte\n")
+        for s, r in zip(args.semillas, resultados):
+            for c, m in r["por_sena"].items():
+                fh.write(f"{nombre},{s},{c},{m['precision']:.4f},{m['recall']:.4f},"
+                         f"{m['f1-score']:.4f},{int(m['support'])}\n")
+    with open(f"data/matriz_{nombre}.csv", "w", encoding="utf-8") as fh:      # suma de todas las semillas
+        fh.write("real," + ",".join(clases) + "\n")
+        total = sum(r["cm"] for r in resultados)
+        for c, fila in zip(clases, total):
+            fh.write(c + "," + ",".join(str(int(v)) for v in fila) + "\n")
+    with open(f"data/historial_{nombre}.csv", "w", encoding="utf-8") as fh:   # curvas de aprendizaje
+        fh.write("modelo,semilla,epoca,loss,accuracy,val_loss,val_accuracy\n")
+        for s, r in zip(args.semillas, resultados):
+            h = r["hist"]
+            for e in range(len(h["loss"])):
+                fh.write(f"{nombre},{s},{e + 1},{h['loss'][e]:.4f},{h['accuracy'][e]:.4f},"
+                         f"{h['val_loss'][e]:.4f},{h['val_accuracy'][e]:.4f}\n")
+    print(f"\nGuardado en data/: resultados_{nombre}.csv, por_sena_{nombre}.csv, matriz_{nombre}.csv, "
+          f"historial_{nombre}.csv, modelo_{nombre}.(keras|tflite)")

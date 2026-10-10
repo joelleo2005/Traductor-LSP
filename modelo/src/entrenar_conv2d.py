@@ -1,14 +1,4 @@
-"""
-Modelo Conv2D (propuesta) para reconocer 10 señas de la LSP.
 
-Ejecutar desde la carpeta modelo/:
-    python src/entrenar_conv2d.py                      # una partición (semilla 42)
-    python src/entrenar_conv2d.py --semillas 1 2 3 4 5 # varias particiones -> media ± desviación
-
-Entrada: el vector de 258 valores se reorganiza como una "imagen"
-  (30 fotogramas x 109 columnas de articulaciones x 9 canales)
-y la convolución 2D recorre a la vez el TIEMPO y las ARTICULACIONES vecinas.
-"""
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -29,10 +19,6 @@ def a_puntos(X):
 
 
 def orden_tssi():
-    """Orden de columnas tipo árbol esquelético (TSSI, Laines et al., 2023).
-    Se recorre el esqueleto en profundidad volviendo al padre, de modo que dos
-    columnas vecinas son siempre articulaciones conectadas: así el filtro 3x3 de
-    la Conv2D mira movimientos de articulaciones que realmente están unidas."""
     hijos = {}
 
     def unir(a, b):
@@ -62,8 +48,6 @@ ORDEN = orden_tssi()
 
 
 def a_imagen(X):
-    """(N, 30, 258) -> (N, 30, 109, 9)
-    Canales: posición (x,y,z) + velocidad (x,y,z) + forma de la mano relativa a la muñeca (x,y,z)."""
     P = a_puntos(X)
     V = np.zeros_like(P)
     V[:, 1:] = P[:, 1:] - P[:, :-1]                       # movimiento entre fotogramas
@@ -77,8 +61,6 @@ def a_imagen(X):
 
 
 def modelo_conv2d(n_clases):
-    """Conv2D sobre (tiempo x articulaciones). Al final se promedia SOLO en el tiempo,
-    para no perder qué articulación hizo cada movimiento."""
     return keras.Sequential([
         keras.Input(shape=(30, len(ORDEN), 9)),
         layers.BatchNormalization(),

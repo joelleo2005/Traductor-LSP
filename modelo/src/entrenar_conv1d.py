@@ -1,14 +1,4 @@
-"""
-Modelo Conv1D (línea base del artículo) para reconocer 10 señas de la LSP.
 
-Ejecutar desde la carpeta modelo/:
-    python src/entrenar_conv1d.py                      # una partición (semilla 42)
-    python src/entrenar_conv1d.py --semillas 1 2 3 4 5 # varias particiones -> media ± desviación
-
-Entrada: cada seña es una secuencia de 30 fotogramas x 258 valores
-  (pose 33 x (x,y,z,visibilidad) + mano izq 21 x (x,y,z) + mano der 21 x (x,y,z)).
-La convolución 1D recorre solo el TIEMPO; los 258 valores entran como canales.
-"""
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.regularizers import l2
