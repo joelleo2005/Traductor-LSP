@@ -1,4 +1,13 @@
+"""
+Paso 3 del pipeline: tabla comparativa Conv1D vs Conv2D en Excel.
 
+Lee los CSV que generan entrenar_conv1d.py y entrenar_conv2d.py (data/resultados_*, por_sena_*,
+matriz_*, historial_*) y crea data/resultados.xlsx con 7 hojas:
+    Resumen, Por semilla, Por seña, Detalle señas, Matriz Conv1D, Matriz Conv2D, Historial
+
+Ejecutar desde la carpeta modelo/, después de entrenar los dos modelos:
+    python src/comparar_modelos.py
+"""
 import csv
 from collections import defaultdict
 
@@ -11,22 +20,26 @@ SALIDA = "data/resultados.xlsx"
 
 
 def leer(ruta):
+    """Lee un CSV y devuelve una lista de diccionarios (uno por fila)."""
     with open(ruta, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
 def pct(v):
+    """Convierte una proporción (0.7234) a porcentaje con un decimal (72.3)."""
     return round(float(v) * 100, 1)
 
 
+# ---- Lectura de los CSV de ambos modelos
 res = {m: leer(f"data/resultados_{m}.csv") for m in MODELOS}
 sen = {m: leer(f"data/por_sena_{m}.csv") for m in MODELOS}
 
+# Las semillas deben ser las mismas en los dos modelos (misma partición de datos)
 semillas = [r["semilla"] for r in res["conv1d"]]
 if semillas != [r["semilla"] for r in res["conv2d"]]:
     print("OJO: los dos modelos se corrieron con semillas distintas -> la comparación no es justa")
 
-# ---- Hoja 1: Resumen
+# ---- Hoja 1: Resumen (media y desviación estándar de las semillas)
 resumen = [["Modelo", "Accuracy media (%)", "Accuracy desv. (%)", "F1 macro media (%)", "F1 macro desv. (%)",
             "Parámetros", "TFLite (KB)", "Inferencia (ms/seña)", "Épocas (media)", "N° semillas"]]
 for m in MODELOS:
@@ -59,7 +72,7 @@ for s in sorted(prom):
                      v[("conv2d", "precision")], v[("conv2d", "recall")], v[("conv2d", "f1")],
                      round(v[("conv2d", "f1")] - v[("conv1d", "f1")], 1)])
 
-# ---- Hoja 4: Detalle (crudo)
+# ---- Hoja 4: Detalle (crudo, cada seña en cada semilla)
 detalle = [["Modelo", "Semilla", "Seña", "Precisión (%)", "Recall (%)", "F1 (%)", "N° muestras de prueba"]]
 for m in MODELOS:
     for x in sen[m]:
@@ -74,7 +87,7 @@ for m in MODELOS:
     tabla = [["Real / Predicho"] + filas_m[0][1:] + ["Total", "Aciertos (%)"]]
     for f in filas_m[1:]:
         v = [int(x) for x in f[1:]]
-        i = filas_m[0][1:].index(f[0])
+        i = filas_m[0][1:].index(f[0])                 # posición de la diagonal (aciertos)
         tabla.append([f[0]] + v + [sum(v), round(100 * v[i] / max(1, sum(v)), 1)])
     matrices[m] = tabla
 
@@ -88,7 +101,7 @@ for m in MODELOS:
 
 # ---- Escribir el Excel
 wb = Workbook()
-wb.remove(wb.active)
+wb.remove(wb.active)                                     # quita la hoja vacía por defecto
 for nombre, tabla in (("Resumen", resumen), ("Por semilla", por_semilla),
                       ("Por seña", por_sena), ("Detalle señas", detalle),
                       ("Matriz Conv1D", matrices["conv1d"]), ("Matriz Conv2D", matrices["conv2d"]),
@@ -108,6 +121,7 @@ for nombre, tabla in (("Resumen", resumen), ("Por semilla", por_semilla),
             c.font = Font(bold=True)
             c.fill = PatternFill("solid", fgColor="C6EFCE")
             ws.cell(row=k, column=1).font = Font(bold=True)
+    # Inmoviliza el encabezado (y la primera columna en las matrices)
     ws.freeze_panes = "B2" if nombre.startswith("Matriz") else "A2"
 wb.save(SALIDA)
 

@@ -1,4 +1,13 @@
+"""
+Paso 2 del pipeline: base común para entrenar y evaluar los dos modelos.
 
+entrenar_conv1d.py y entrenar_conv2d.py solo definen su red y cómo preparar la entrada; todo lo demás
+está aquí, para que ambos modelos se entrenen y evalúen exactamente igual:
+    cargar_datos       -> lee data/X.npy y data/y.npy, normaliza y filtra las 10 señas
+    particion          -> 80 % entrenamiento / 20 % prueba (estratificado) + validación + aumento
+    entrenar_y_evaluar -> entrena, evalúa en prueba, exporta a TFLite y mide la latencia
+    ejecutar           -> repite lo anterior para cada semilla y guarda los CSV de resultados en data/
+"""
 import argparse
 import time
 
@@ -12,26 +21,29 @@ from tensorflow import keras
 
 from normalizar import normalizar
 from augmentation import aumentar
-# ===== CONFIGURACIÓN =====
 
+# ===== CONFIGURACIÓN =====
 SEÑAS_USAR = {"YO", "PENSAR", "MUJER", "MAMA", "QUE", "VER", "COMER", "BIEN", "CAMINAR", "CASA"}
-N_COPIAS_AUG = 8
-EPOCHS = 200
-BATCH = 16
+N_COPIAS_AUG = 8    # copias aumentadas por cada seña de entrenamiento (entrenamiento x9)
+EPOCHS = 200        # número fijo de épocas (sin early stopping)
+BATCH = 16          # tamaño de lote
 VAL_SIZE = 0.15     # fracción del 80 % de entrenamiento usada como validación
 
 
 def cargar_datos():
-    """Carga X.npy, normaliza, pone en 0 las manos no detectadas y filtra las 10 señas."""
+    """Carga X.npy, normaliza, pone en 0 las manos no detectadas y filtra las 10 señas.
+
+    Devuelve X (N, 30, 258), y_num (etiquetas como números 0..9) y clases (nombres en orden alfabético).
+    """
     X_crudo = np.load("data/X.npy")
     y = np.load("data/y.npy")
     X = normalizar(X_crudo)
     for ini, fin in ((132, 195), (195, 258)):                      # manos no detectadas -> 0 (no una "mano falsa")
         falta = (X_crudo[:, :, ini:fin] == 0).all(-1)
         X[:, :, ini:fin][falta] = 0.0
-    mask = np.array([et in SEÑAS_USAR for et in y])
+    mask = np.array([et in SEÑAS_USAR for et in y])                # solo las 10 señas elegidas
     X, y = X[mask], y[mask]
-    le = LabelEncoder()
+    le = LabelEncoder()                                            # "BIEN" -> 0, "CAMINAR" -> 1, ...
     y_num = le.fit_transform(y)
     clases = list(le.classes_)
     print("Dataset:", X.shape, "-", len(clases), "clases")
@@ -40,10 +52,16 @@ def cargar_datos():
 
 
 def particion(X, y_num, seed):
-    """80/20 estratificado; validación desde el 80 %; aumento solo en entrenamiento."""
+    """80/20 estratificado; validación desde el 80 %; aumento solo en entrenamiento.
+
+    La semilla fija qué muestras caen en cada conjunto, así ambos modelos usan la misma partición.
+    """
+    # 1. 20 % para prueba (no se toca hasta el final)
     X_trv, X_te, y_trv, y_te = train_test_split(X, y_num, test_size=0.2, random_state=seed, stratify=y_num)
+    # 2. Del 80 % restante, 15 % para validación
     X_tr, X_va, y_tr, y_va = train_test_split(X_trv, y_trv, test_size=VAL_SIZE, random_state=seed,
                                               stratify=y_trv)
+    # 3. Aumento de datos SOLO en entrenamiento y después de separar (evita fuga de datos)
     np.random.seed(seed)
     X_tr, y_tr = aumentar(X_tr, y_tr, n_copias=N_COPIAS_AUG)
     print(f"Entrenamiento: {len(X_tr)} (con aumento x{N_COPIAS_AUG + 1}) | "
@@ -52,6 +70,7 @@ def particion(X, y_num, seed):
 
 
 def imprimir_matriz(cm, clases):
+    """Muestra la matriz de confusión en la terminal (fila = seña real, columna = seña predicha)."""
     w = max(len(c) for c in clases)
     print("\n=== Matriz de confusión (fila = real, columna = predicho) ===")
     print(" " * (w + 2) + " ".join(f"{c[:7]:>7s}" for c in clases))
@@ -60,6 +79,7 @@ def imprimir_matriz(cm, clases):
 
 
 def a_tflite(model):
+    """Convierte el modelo Keras a TensorFlow Lite (el formato que usará la app móvil). Devuelve los bytes."""
     return tf.lite.TFLiteConverter.from_keras_model(model).convert()
 
 
@@ -69,7 +89,7 @@ def latencia_tflite(tfl, x, repeticiones=200):
     it.allocate_tensors()
     i = it.get_input_details()[0]
     muestra = x[:1].astype("float32")
-    for _ in range(10):
+    for _ in range(10):                                  # calentamiento (no se mide)
         it.set_tensor(i["index"], muestra); it.invoke()
     t = time.perf_counter()
     for _ in range(repeticiones):
@@ -78,25 +98,31 @@ def latencia_tflite(tfl, x, repeticiones=200):
 
 
 def entrenar_y_evaluar(nombre, model, Xtr, ytr, Xva, yva, Xte, yte, clases, guardar):
+    """Entrena un modelo, lo evalúa en el conjunto de prueba y lo exporta a TFLite.
+
+    guardar=True guarda el modelo en data/modelo_<nombre>.keras y .tflite.
+    Devuelve un diccionario con las métricas (accuracy, F1, por seña, matriz de confusión, historial, etc.).
+    """
     n = len(clases)
     print("\n" + "=" * 70)
     print(f" MODELO {nombre.upper()}  |  entrada {Xtr.shape[1:]}  |  parámetros {model.count_params():,}")
     print("=" * 70)
     model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
     callbacks = [
+        # Si la pérdida de validación no mejora en 10 épocas, reduce la tasa de aprendizaje a la mitad
         keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5),
     ]
     t0 = time.time()
-    hist = model.fit(Xtr, keras.utils.to_categorical(ytr, n),
+    hist = model.fit(Xtr, keras.utils.to_categorical(ytr, n),           # etiquetas en one-hot
                      validation_data=(Xva, keras.utils.to_categorical(yva, n)),
                      epochs=EPOCHS, batch_size=BATCH, callbacks=callbacks, verbose=1)
     minutos = (time.time() - t0) / 60
     epocas = len(hist.history["loss"])
 
     # ---- evaluación en PRUEBA (20 %), una sola vez
-    pred = np.argmax(model.predict(Xte, verbose=0), axis=1)
+    pred = np.argmax(model.predict(Xte, verbose=0), axis=1)            # seña con mayor probabilidad
     acc = float((pred == yte).mean())
-    f1 = float(f1_score(yte, pred, average="macro"))
+    f1 = float(f1_score(yte, pred, average="macro"))                   # promedio del F1 de las 10 señas
     print(f"\n>>> {nombre}: precisión en test = {acc * 100:.1f}%  |  F1 macro = {f1 * 100:.1f}%  "
           f"|  {epocas} épocas en {minutos:.1f} min")
     print(classification_report(yte, pred, target_names=clases, digits=2, zero_division=0))
@@ -104,6 +130,7 @@ def entrenar_y_evaluar(nombre, model, Xtr, ytr, Xva, yva, Xte, yte, clases, guar
     imprimir_matriz(cm, clases)
     rep = classification_report(yte, pred, target_names=clases, zero_division=0, output_dict=True)
 
+    # ---- exportación a TFLite y costo computacional
     tfl = a_tflite(model)
     ms = latencia_tflite(tfl, Xte)
     print(f"\nTFLite: {len(tfl) / 1024:.0f} KB  |  inferencia ≈ {ms:.2f} ms por seña (CPU)")
@@ -126,28 +153,30 @@ def ejecutar(nombre, construir_modelo, preparar_entrada):
 
     X, y_num, clases = cargar_datos()
     resultados = []
-    for k, seed in enumerate(args.semillas):
+    for k, seed in enumerate(args.semillas):                  # una partición distinta por semilla
         print("\n" + "#" * 70 + f"\n# {nombre.upper()} - PARTICIÓN CON SEMILLA {seed}\n" + "#" * 70)
         X_tr, y_tr, X_va, y_va, X_te, y_te = particion(X, y_num, seed)
-        keras.utils.set_random_seed(seed)
+        keras.utils.set_random_seed(seed)                     # pesos iniciales reproducibles
         resultados.append(entrenar_y_evaluar(
-            nombre, construir_modelo(len(clases)),
+            nombre, construir_modelo(len(clases)),            # modelo nuevo en cada semilla
             preparar_entrada(X_tr), y_tr, preparar_entrada(X_va), y_va, preparar_entrada(X_te), y_te,
-            clases, guardar=(k == 0)))
+            clases, guardar=(k == 0)))                        # se guarda el modelo de la primera semilla
 
-    # ---- resumen de este modelo + CSV (los lee comparar.py)
+    # ---- resumen de este modelo + CSV (los lee comparar_modelos.py)
     a = np.array([r["acc"] for r in resultados]) * 100
     f = np.array([r["f1"] for r in resultados]) * 100
     print("\n" + "=" * 70 + f"\n RESUMEN {nombre.upper()} ({len(resultados)} semilla(s), conjunto de prueba)\n" + "=" * 70)
     print(f"Accuracy: {a.mean():.1f} ± {a.std():.1f}%  |  F1 macro: {f.mean():.1f} ± {f.std():.1f}%  |  "
           f"parámetros: {resultados[0]['params']:,}  |  TFLite: {resultados[0]['kb']:.0f} KB  |  "
           f"{np.mean([r['ms'] for r in resultados]):.2f} ms/seña")
+    # Resultados generales por semilla
     lineas = ["modelo,semilla,accuracy,f1_macro,epocas,minutos,parametros,tflite_kb,ms_por_sena"]
     for s, r in zip(args.semillas, resultados):
         lineas.append(f"{nombre},{s},{r['acc']:.4f},{r['f1']:.4f},{r['epocas']},{r['min']:.2f},"
                       f"{r['params']},{r['kb']:.1f},{r['ms']:.3f}")
     with open(f"data/resultados_{nombre}.csv", "w", encoding="utf-8") as fh:
         fh.write("\n".join(lineas) + "\n")
+    # Precisión, recall y F1 de cada seña, por semilla
     with open(f"data/por_sena_{nombre}.csv", "w", encoding="utf-8") as fh:
         fh.write("modelo,semilla,sena,precision,recall,f1,soporte\n")
         for s, r in zip(args.semillas, resultados):

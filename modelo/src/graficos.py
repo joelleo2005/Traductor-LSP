@@ -1,4 +1,18 @@
+"""
+Gráficos de resultados a partir de data/resultados.xlsx (lo genera comparar_modelos.py).
 
+Ejecutar desde la carpeta modelo/:
+    python src/graficos.py
+    python src/graficos.py --excel otra_ruta.xlsx --salida otra_carpeta
+
+Crea en data/graficos/:
+    01_accuracy_f1.png             accuracy y F1 macro de cada modelo (media ± desviación)
+    02_accuracy_por_semilla.png    accuracy de cada modelo en cada partición
+    03_f1_por_sena.png             F1 de cada seña
+    04/05_matriz_conv*.png         matrices de confusión (en % de cada seña real)
+    06/07_curvas_conv*_semillaN.png curvas de aprendizaje, un archivo por semilla
+    08_eficiencia.png              parámetros, tamaño TFLite y tiempo de inferencia
+"""
 import argparse
 import os
 
@@ -30,11 +44,13 @@ def leer_hoja(wb, nombre):
 
 
 def como_dicts(wb, nombre):
+    """Hoja de Excel -> lista de diccionarios {encabezado: valor}, uno por fila."""
     enc, filas = leer_hoja(wb, nombre)
     return [dict(zip(enc, f)) for f in filas]
 
 
 def guardar(fig, carpeta, archivo):
+    """Guarda la figura como PNG (200 dpi, fondo blanco) y la cierra."""
     ruta = os.path.join(carpeta, archivo)
     fig.savefig(ruta, dpi=200, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -42,6 +58,7 @@ def guardar(fig, carpeta, archivo):
 
 
 def etiquetar_barras(ax, barras, fmt="{:.1f}", dy=1.0):
+    """Escribe el valor encima de cada barra."""
     for b in barras:
         h = b.get_height()
         ax.text(b.get_x() + b.get_width() / 2, h + dy, fmt.format(h), ha="center", va="bottom",
@@ -50,6 +67,7 @@ def etiquetar_barras(ax, barras, fmt="{:.1f}", dy=1.0):
 
 # ===== Gráficos =====
 def g_accuracy_f1(wb, carpeta):
+    """01: barras de accuracy y F1 macro por modelo, con la desviación estándar como barra de error."""
     res = como_dicts(wb, "Resumen")
     metricas = [("Accuracy", "Accuracy media (%)", "Accuracy desv. (%)"),
                 ("F1 macro", "F1 macro media (%)", "F1 macro desv. (%)")]
@@ -73,6 +91,7 @@ def g_accuracy_f1(wb, carpeta):
 
 
 def g_por_semilla(wb, carpeta):
+    """02: accuracy de cada modelo en cada semilla (partición)."""
     filas = como_dicts(wb, "Por semilla")
     semillas = sorted({r["Semilla"] for r in filas})
     x = np.arange(len(semillas))
@@ -92,6 +111,7 @@ def g_por_semilla(wb, carpeta):
 
 
 def g_f1_por_sena(wb, carpeta):
+    """03: barras horizontales con el F1 de cada seña (ordenadas por el F1 de la Conv2D)."""
     filas = sorted(como_dicts(wb, "Por seña"), key=lambda r: r["F1 Conv2D (%)"])
     senas = [r["Seña"] for r in filas]
     y = np.arange(len(senas))
@@ -112,6 +132,7 @@ def g_f1_por_sena(wb, carpeta):
 
 
 def g_matriz(wb, carpeta, modelo, archivo):
+    """04 y 05: matriz de confusión en porcentaje de cada fila (la diagonal son los aciertos)."""
     enc, filas = leer_hoja(wb, f"Matriz {modelo.replace('CONV', 'Conv')}")
     clases = enc[1:enc.index("Total")]
     cm = np.array([[f[1 + j] for j in range(len(clases))] for f in filas], dtype=float)
@@ -170,7 +191,9 @@ def g_curvas(wb, carpeta, modelo, prefijo):
         fig.legend(*a1.get_legend_handles_labels(), loc="upper right", ncols=2, bbox_to_anchor=(1, 1.0))
         guardar(fig, carpeta, f"{prefijo}_curvas_{modelo.lower()}_semilla{s}.png")
 
+
 def g_eficiencia(wb, carpeta):
+    """08: costo computacional (parámetros, tamaño del .tflite y milisegundos por seña)."""
     res = como_dicts(wb, "Resumen")
     paneles = [("Parámetros", "Parámetros", "{:,.0f}"), ("Tamaño TFLite (KB)", "TFLite (KB)", "{:,.0f}"),
                ("Inferencia (ms por seña, CPU)", "Inferencia (ms/seña)", "{:.2f}")]
@@ -194,6 +217,7 @@ def g_eficiencia(wb, carpeta):
 
 
 def main():
+    """Lee el Excel y genera todos los gráficos."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--excel", default="data/resultados.xlsx")
     ap.add_argument("--salida", default="data/graficos")
