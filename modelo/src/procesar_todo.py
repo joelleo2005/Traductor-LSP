@@ -39,7 +39,7 @@ def keypoints_video(ruta, holistic):
     cap.release()
     return frames
 
-def recorte(frames, ini=None, fin=None):
+def recorte(frames, ini =None, fin = None ):
     sub = [(t, kp, m) for (t, kp, m) in frames if (ini is None or ini <= t <= fin)]
     cm = [kp for (t, kp, m) in sub if m]
     todos = [kp for (t, kp, m) in sub]

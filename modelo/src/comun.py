@@ -12,8 +12,8 @@ from tensorflow import keras
 
 from normalizar import normalizar
 from augmentation import aumentar
-
 # ===== CONFIGURACIÓN =====
+
 SEÑAS_USAR = {"YO", "PENSAR", "MUJER", "MAMA", "QUE", "VER", "COMER", "BIEN", "CAMINAR", "CASA"}
 N_COPIAS_AUG = 8
 EPOCHS = 200
@@ -26,7 +26,7 @@ def cargar_datos():
     X_crudo = np.load("data/X.npy")
     y = np.load("data/y.npy")
     X = normalizar(X_crudo)
-    for ini, fin in ((132, 195), (195, 258)):          # manos no detectadas -> 0 (no una "mano falsa")
+    for ini, fin in ((132, 195), (195, 258)):                      # manos no detectadas -> 0 (no una "mano falsa")
         falta = (X_crudo[:, :, ini:fin] == 0).all(-1)
         X[:, :, ini:fin][falta] = 0.0
     mask = np.array([et in SEÑAS_USAR for et in y])

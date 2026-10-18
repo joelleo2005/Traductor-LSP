@@ -1,29 +1,39 @@
-﻿# Datos - NO subir los videos del PUCP
+# ===== Datos y resultados generados (videos, landmarks, modelos, Excel, gráficos) =====
 modelo/data/*
 !modelo/data/.gitkeep
-modelo/old/*
+modelo/src/data/
 
-# Python
+# Código antiguo que ya no forma parte del pipeline
+modelo/old/
+
+# ===== Python =====
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 env/
+.env
 .ipynb_checkpoints/
 
-# Modelos grandes de entrenamiento
+# Modelos y archivos binarios de entrenamiento
 *.h5
 *.keras
 *.pkl
+*.npy
 
-# Flutter / Dart
-app/build/
-app/.dart_tool/
+# ===== IDEs =====
+.idea/
+.vscode/
 *.iml
 
-# VS Code
-.vscode/
+# ===== Flutter / Android =====
+build/
+.dart_tool/
+.gradle/
+local.properties
 
-# Sistema
+# ===== Varios =====
+*.zip
+*.log
 Thumbs.db
 .DS_Store

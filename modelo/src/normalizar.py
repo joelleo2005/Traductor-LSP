@@ -2,7 +2,7 @@ import numpy as np
 
 def normalizar(X):
     """Centra los keypoints en los hombros y los escala por el ancho de hombros.
-    Hace la seña invariante a DÓNDE y a qué TAMAÑO está la persona en el cuadro."""
+        Hace la seña invariante a DÓNDE y a qué TAMAÑO está la persona en el cuadro."""
     Xn = X.copy().astype("float32")
     N, T, D = Xn.shape
     for n in range(N):
