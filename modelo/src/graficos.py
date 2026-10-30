@@ -5,13 +5,13 @@ Ejecutar desde la carpeta modelo/:
     python src/graficos.py
     python src/graficos.py --excel otra_ruta.xlsx --salida otra_carpeta
 
-Crea en data/graficos/:
-    01_accuracy_f1.png             accuracy y F1 macro de cada modelo (media ± desviación)
-    02_accuracy_por_semilla.png    accuracy de cada modelo en cada partición
-    03_f1_por_sena.png             F1 de cada seña
-    04/05_matriz_conv*.png         matrices de confusión (en % de cada seña real)
-    06/07_curvas_conv*_semillaN.png curvas de aprendizaje, un archivo por semilla
-    08_eficiencia.png              parámetros, tamaño TFLite y tiempo de inferencia
+Crea en data/graficos/ (solo para los modelos que estén en el Excel):
+    01_accuracy_f1.png               accuracy y F1 macro de cada modelo (media ± desviación)
+    02_accuracy_por_semilla.png      accuracy de cada modelo en cada partición
+    03_f1_por_sena.png               F1 de cada seña
+    04/05_matriz_<modelo>.png        matrices de confusión (en % de cada seña real)
+    06/07_curvas_<modelo>_semillaN.png  curvas de aprendizaje, un archivo por semilla
+    08_eficiencia.png                parámetros, tamaño del modelo y tiempo de inferencia
 """
 import argparse
 import os
@@ -25,7 +25,9 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 from openpyxl import load_workbook
 
 # ===== Estilo =====
-COLOR = {"CONV1D": "#2a78d6", "CONV2D": "#eb6834"}     # azul / naranja (seguros para daltonismo)
+COLOR = {"CONV1D": "#2a78d6", "CONV2D": "#eb6834"}                       # azul / naranja
+NOMBRE = {"CONV1D": "Conv1D", "CONV2D": "Conv2D"}                        # nombre para mostrar
+NUMERO = {"CONV1D": ("04", "06"), "CONV2D": ("05", "07")}                # (matriz, curvas)
 TEXTO, TEXTO_2, GRILLA = "#0b0b0b", "#52514e", "#e4e3df"
 AZULES = LinearSegmentedColormap.from_list(            # escala secuencial de un solo tono
     "azules", ["#fcfcfb", "#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#184f95", "#0d366b"])
@@ -57,6 +59,11 @@ def guardar(fig, carpeta, archivo):
     print("  ", ruta)
 
 
+def desplazamiento(k, n, ancho):
+    """Posición horizontal de la barra del modelo k cuando hay n modelos agrupados."""
+    return (k - (n - 1) / 2) * (ancho + 0.02)
+
+
 def etiquetar_barras(ax, barras, fmt="{:.1f}", dy=1.0):
     """Escribe el valor encima de cada barra."""
     for b in barras:
@@ -72,13 +79,13 @@ def g_accuracy_f1(wb, carpeta):
     metricas = [("Accuracy", "Accuracy media (%)", "Accuracy desv. (%)"),
                 ("F1 macro", "F1 macro media (%)", "F1 macro desv. (%)")]
     x = np.arange(len(metricas))
-    ancho = 0.36
+    ancho = 0.72 / len(res)
     fig, ax = plt.subplots(figsize=(6.5, 4.2))
     for k, r in enumerate(res):
         medias = [r[m] for _, m, _ in metricas]
         desv = [r[d] for _, _, d in metricas]
-        b = ax.bar(x + (k - 0.5) * (ancho + 0.02), medias, ancho, yerr=desv, capsize=4,
-                   color=COLOR[r["Modelo"]], label=r["Modelo"].replace("CONV", "Conv"),
+        b = ax.bar(x + desplazamiento(k, len(res), ancho), medias, ancho, yerr=desv, capsize=4,
+                   color=COLOR[r["Modelo"]], label=NOMBRE[r["Modelo"]],
                    error_kw={"elinewidth": 1, "ecolor": TEXTO_2})
         etiquetar_barras(ax, b, dy=max(desv) + 1)
     ax.set_xticks(x, [m for m, _, _ in metricas])
@@ -86,7 +93,7 @@ def g_accuracy_f1(wb, carpeta):
     ax.set_ylabel("%")
     ax.grid(axis="x", visible=False)
     ax.set_title(f"Rendimiento en el conjunto de prueba ({res[0]['N° semillas']} particiones)", loc="left")
-    ax.legend(loc="upper right", ncols=2)
+    ax.legend(loc="upper right", ncols=len(res))
     guardar(fig, carpeta, "01_accuracy_f1.png")
 
 
@@ -94,32 +101,37 @@ def g_por_semilla(wb, carpeta):
     """02: accuracy de cada modelo en cada semilla (partición)."""
     filas = como_dicts(wb, "Por semilla")
     semillas = sorted({r["Semilla"] for r in filas})
+    modelos = [m for m in NOMBRE if any(r["Modelo"] == m for r in filas)]
     x = np.arange(len(semillas))
-    ancho = 0.36
+    ancho = 0.72 / len(modelos)
     fig, ax = plt.subplots(figsize=(7, 4))
-    for k, m in enumerate(("CONV1D", "CONV2D")):
-        val = [next(r["Accuracy (%)"] for r in filas if r["Modelo"] == m and r["Semilla"] == s) for s in semillas]
-        b = ax.bar(x + (k - 0.5) * (ancho + 0.02), val, ancho, color=COLOR[m], label=m.replace("CONV", "Conv"))
+    for k, m in enumerate(modelos):
+        val = [next((r["Accuracy (%)"] for r in filas if r["Modelo"] == m and r["Semilla"] == s), 0)
+               for s in semillas]                       # 0 si ese modelo no se corrió con esa semilla
+        b = ax.bar(x + desplazamiento(k, len(modelos), ancho), val, ancho, color=COLOR[m], label=NOMBRE[m])
         etiquetar_barras(ax, b)
     ax.set_xticks(x, [f"Semilla {s}" for s in semillas])
     ax.set_ylim(0, 100)
     ax.set_ylabel("Accuracy (%)")
     ax.grid(axis="x", visible=False)
-    ax.set_title("Accuracy por partición (misma partición para ambos modelos)", loc="left")
-    ax.legend(loc="upper right", ncols=2)
+    ax.set_title("Accuracy por partición (misma partición para todos los modelos)", loc="left")
+    ax.legend(loc="upper right", ncols=len(modelos))
     guardar(fig, carpeta, "02_accuracy_por_semilla.png")
 
 
 def g_f1_por_sena(wb, carpeta):
-    """03: barras horizontales con el F1 de cada seña (ordenadas por el F1 de la Conv2D)."""
-    filas = sorted(como_dicts(wb, "Por seña"), key=lambda r: r["F1 Conv2D (%)"])
+    """03: barras horizontales con el F1 de cada seña (ordenadas por el F1 de la Conv2D, si está)."""
+    filas = como_dicts(wb, "Por seña")
+    modelos = [m for m in NOMBRE if f"F1 {NOMBRE[m]} (%)" in filas[0]]
+    orden = "F1 Conv2D (%)" if "CONV2D" in modelos else f"F1 {NOMBRE[modelos[0]]} (%)"
+    filas = sorted(filas, key=lambda r: r[orden])
     senas = [r["Seña"] for r in filas]
     y = np.arange(len(senas))
-    alto = 0.38
-    fig, ax = plt.subplots(figsize=(7, 0.5 * len(senas) + 1.2))
-    for k, (m, col) in enumerate((("CONV1D", "F1 Conv1D (%)"), ("CONV2D", "F1 Conv2D (%)"))):
-        val = [r[col] for r in filas]
-        b = ax.barh(y + (0.5 - k) * (alto + 0.02), val, alto, color=COLOR[m], label=m.replace("CONV", "Conv"))
+    alto = 0.76 / len(modelos)
+    fig, ax = plt.subplots(figsize=(7, 0.25 * len(senas) * len(modelos) + 1.2))
+    for k, m in enumerate(modelos):
+        val = [r[f"F1 {NOMBRE[m]} (%)"] for r in filas]
+        b = ax.barh(y - desplazamiento(k, len(modelos), alto), val, alto, color=COLOR[m], label=NOMBRE[m])
         for bb, v in zip(b, val):
             ax.text(v + 1, bb.get_y() + bb.get_height() / 2, f"{v:.0f}", va="center", fontsize=8, color=TEXTO_2)
     ax.set_yticks(y, senas)
@@ -127,13 +139,13 @@ def g_f1_por_sena(wb, carpeta):
     ax.set_xlabel("F1 (%)")
     ax.grid(axis="y", visible=False)
     ax.set_title("F1 por seña (promedio de las particiones)", loc="left")
-    ax.legend(loc="lower right", ncols=2)
+    ax.legend(loc="lower right", ncols=len(modelos))
     guardar(fig, carpeta, "03_f1_por_sena.png")
 
 
 def g_matriz(wb, carpeta, modelo, archivo):
     """04 y 05: matriz de confusión en porcentaje de cada fila (la diagonal son los aciertos)."""
-    enc, filas = leer_hoja(wb, f"Matriz {modelo.replace('CONV', 'Conv')}")
+    enc, filas = leer_hoja(wb, f"Matriz {NOMBRE[modelo]}")
     clases = enc[1:enc.index("Total")]
     cm = np.array([[f[1 + j] for j in range(len(clases))] for f in filas], dtype=float)
     pct = 100 * cm / np.maximum(cm.sum(1, keepdims=True), 1)          # % de cada fila (seña real)
@@ -155,7 +167,7 @@ def g_matriz(wb, carpeta, modelo, archivo):
     cb.set_label("% de la seña real")
     cb.outline.set_visible(False)
     acc = 100 * np.trace(cm) / cm.sum()
-    ax.set_title(f"Matriz de confusión {modelo.replace('CONV', 'Conv')} — accuracy global {acc:.1f}%\n"
+    ax.set_title(f"Matriz de confusión {NOMBRE[modelo]} — accuracy global {acc:.1f}%\n"
                  f"(suma de todas las particiones, {int(cm.sum())} predicciones)", loc="left")
     guardar(fig, carpeta, archivo)
 
@@ -163,7 +175,7 @@ def g_matriz(wb, carpeta, modelo, archivo):
 def g_curvas(wb, carpeta, modelo, prefijo):
     """Un gráfico por semilla con las curvas de aprendizaje: loss (izquierda) y accuracy (derecha)."""
     todas = [r for r in como_dicts(wb, "Historial") if r["Modelo"] == modelo]
-    nombre = modelo.replace("CONV", "Conv")
+    nombre = NOMBRE[modelo]
     for s in sorted({r["Semilla"] for r in todas}):
         filas = [r for r in todas if r["Semilla"] == s]
         ep = [r["Época"] for r in filas]
@@ -193,15 +205,15 @@ def g_curvas(wb, carpeta, modelo, prefijo):
 
 
 def g_eficiencia(wb, carpeta):
-    """08: costo computacional (parámetros, tamaño del .tflite y milisegundos por seña)."""
+    """08: costo computacional (parámetros, tamaño del modelo y milisegundos por seña)."""
     res = como_dicts(wb, "Resumen")
-    paneles = [("Parámetros", "Parámetros", "{:,.0f}"), ("Tamaño TFLite (KB)", "TFLite (KB)", "{:,.0f}"),
+    paneles = [("Parámetros", "Parámetros", "{:,.0f}"), ("Tamaño del modelo (KB)", "Tamaño (KB)", "{:,.0f}"),
                ("Inferencia (ms por seña, CPU)", "Inferencia (ms/seña)", "{:.2f}")]
-    fig, axes = plt.subplots(1, 3, figsize=(10, 3.4))
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.4))
     for ax, (titulo, col, fmt) in zip(axes, paneles):
         modelos = [r["Modelo"] for r in res]
         val = [r[col] for r in res]
-        b = ax.bar([m.replace("CONV", "Conv") for m in modelos], val, 0.55, color=[COLOR[m] for m in modelos])
+        b = ax.bar([NOMBRE[m] for m in modelos], val, 0.55, color=[COLOR[m] for m in modelos])
         for bb, v in zip(b, val):
             ax.text(bb.get_x() + bb.get_width() / 2, v * 1.02, fmt.format(v), ha="center", va="bottom",
                     fontsize=9, color=TEXTO)
@@ -229,10 +241,10 @@ def main():
     g_accuracy_f1(wb, args.salida)
     g_por_semilla(wb, args.salida)
     g_f1_por_sena(wb, args.salida)
-    g_matriz(wb, args.salida, "CONV1D", "04_matriz_conv1d.png")
-    g_matriz(wb, args.salida, "CONV2D", "05_matriz_conv2d.png")
-    g_curvas(wb, args.salida, "CONV1D", "06")
-    g_curvas(wb, args.salida, "CONV2D", "07")
+    modelos = [r["Modelo"] for r in como_dicts(wb, "Resumen")]       # los que están en el Excel
+    for m in modelos:
+        g_matriz(wb, args.salida, m, f"{NUMERO[m][0]}_matriz_{m.lower()}.png")
+        g_curvas(wb, args.salida, m, NUMERO[m][1])
     g_eficiencia(wb, args.salida)
     print("Listo.")
 

@@ -2,8 +2,8 @@
 Paso 1 del pipeline: extracción de landmarks de los videos.
 
 Recorre los videos de los tres datasets, pasa cada fotograma por MediaPipe Holistic, recorta cada seña,
-la lleva a 30 fotogramas y guarda:
-    data/X.npy  (N, 30, 258)  landmarks de cada seña
+la lleva a N_FRAMES fotogramas (48) y guarda:
+    data/X.npy  (N, 48, 258)  landmarks de cada seña
     data/y.npy  (N,)          nombre de la seña
 
 Datasets (ver README.md para los enlaces):
@@ -24,7 +24,7 @@ from eaf import leer_anotaciones
 
 # ===== CONFIGURACIÓN =====
 SALIDA_DIR = "data"
-N_FRAMES = 30               # todas las señas se llevan a 30 fotogramas
+N_FRAMES = 48               # todas las señas se llevan a 48 fotogramas
 PERUSIL = r"C:\Users\Joel\Downloads\XXXX_LSP_peru1235_Videos\Videos\SEGMENTED_SIGN_ADJUSTED"
 APRENDO = r"C:\Users\Joel\Downloads\2020-2021_LSP_peru1235_videos\Videos\SEGMENTED_SIGN"
 PUCP    = r"C:\Users\Joel\Downloads\2015-2023_LSP_peru1235_PUCP305_glosas (1)\5. Segundo avance (corregido)"
@@ -68,7 +68,7 @@ def keypoints_video(ruta, holistic):
 
 
 def recorte(frames, ini=None, fin=None):
-    """Recorta una seña de la lista de fotogramas y la lleva a 30 fotogramas.
+    """Recorta una seña de la lista de fotogramas y la lleva a N_FRAMES fotogramas.
 
     ini, fin: intervalo en ms (de la anotación .eaf). Si son None se usa todo el video.
     Dentro del intervalo se usan solo los fotogramas con manos visibles; si hay menos de 5,

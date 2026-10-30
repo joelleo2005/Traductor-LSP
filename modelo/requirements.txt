@@ -1,8 +1,8 @@
 # Python 3.11
-# MediaPipe 0.10.14 (API mp.solutions.holistic) requiere protobuf<5,
-# por eso se usa TensorFlow 2.19.1, compatible con esa versión de protobuf.
-tensorflow==2.19.1
-keras==3.15.0
+# MediaPipe 0.10.14 (API mp.solutions.holistic) requiere protobuf<5.
+# PyTorch con soporte CUDA 12.8 (GPU, compatible con la RTX serie 50); se descarga del índice de PyTorch.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1+cu128
 mediapipe==0.10.14
 protobuf==4.25.9
 numpy==2.1.3

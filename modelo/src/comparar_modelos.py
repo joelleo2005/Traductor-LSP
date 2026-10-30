@@ -1,21 +1,24 @@
 """
-Paso 3 del pipeline: tabla comparativa Conv1D vs Conv2D en Excel.
+Paso 3 del pipeline: tabla comparativa de los modelos (Conv1D y Conv2D) en Excel.
 
-Lee los CSV que generan entrenar_conv1d.py y entrenar_conv2d.py (data/resultados_*, por_sena_*,
-matriz_*, historial_*) y crea data/resultados.xlsx con 7 hojas:
-    Resumen, Por semilla, Por seña, Detalle señas, Matriz Conv1D, Matriz Conv2D, Historial
+Lee los CSV que generan entrenar_conv1d.py y entrenar_conv2d.py (data/resultados_*,
+por_sena_*, matriz_*, historial_*) y crea data/resultados.xlsx con las hojas:
+    Resumen, Por semilla, Por seña, Detalle señas, Matriz <modelo> (una por modelo), Historial
+Solo incluye los modelos que ya fueron entrenados (los que tienen su resultados_<modelo>.csv).
 
-Ejecutar desde la carpeta modelo/, después de entrenar los dos modelos:
+Ejecutar desde la carpeta modelo/, después de entrenar los modelos:
     python src/comparar_modelos.py
 """
 import csv
+import os
 from collections import defaultdict
 
 import numpy as np
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-MODELOS = ("conv1d", "conv2d")
+NOMBRE = {"conv1d": "Conv1D", "conv2d": "Conv2D"}                        # nombre para mostrar
+MODELOS = tuple(m for m in NOMBRE if os.path.exists(f"data/resultados_{m}.csv"))   # solo los entrenados
 SALIDA = "data/resultados.xlsx"
 
 
@@ -30,24 +33,24 @@ def pct(v):
     return round(float(v) * 100, 1)
 
 
-# ---- Lectura de los CSV de ambos modelos
+# ---- Lectura de los CSV de cada modelo
 res = {m: leer(f"data/resultados_{m}.csv") for m in MODELOS}
 sen = {m: leer(f"data/por_sena_{m}.csv") for m in MODELOS}
 
-# Las semillas deben ser las mismas en los dos modelos (misma partición de datos)
-semillas = [r["semilla"] for r in res["conv1d"]]
-if semillas != [r["semilla"] for r in res["conv2d"]]:
-    print("OJO: los dos modelos se corrieron con semillas distintas -> la comparación no es justa")
+# Las semillas deben ser las mismas en todos los modelos (misma partición de datos)
+semillas = [r["semilla"] for r in res[MODELOS[0]]]
+if any(semillas != [r["semilla"] for r in res[m]] for m in MODELOS):
+    print("OJO: los modelos se corrieron con semillas distintas -> la comparación no es justa")
 
 # ---- Hoja 1: Resumen (media y desviación estándar de las semillas)
 resumen = [["Modelo", "Accuracy media (%)", "Accuracy desv. (%)", "F1 macro media (%)", "F1 macro desv. (%)",
-            "Parámetros", "TFLite (KB)", "Inferencia (ms/seña)", "Épocas (media)", "N° semillas"]]
+            "Parámetros", "Tamaño (KB)", "Inferencia (ms/seña)", "Épocas (media)", "N° semillas"]]
 for m in MODELOS:
     r = res[m]
     a = np.array([pct(x["accuracy"]) for x in r])
     f = np.array([pct(x["f1_macro"]) for x in r])
     resumen.append([m.upper(), round(a.mean(), 1), round(a.std(), 1), round(f.mean(), 1), round(f.std(), 1),
-                    int(r[0]["parametros"]), round(float(r[0]["tflite_kb"])),
+                    int(r[0]["parametros"]), round(float(r[0]["tamano_kb"])),
                     round(np.mean([float(x["ms_por_sena"]) for x in r]), 2),
                     round(np.mean([int(x["epocas"]) for x in r])), len(r)])
 
@@ -64,13 +67,15 @@ for m in MODELOS:
     for x in sen[m]:
         for met in ("precision", "recall", "f1"):
             prom[x["sena"]][(m, met)].append(float(x[met]))
-por_sena = [["Seña", "Precisión Conv1D (%)", "Recall Conv1D (%)", "F1 Conv1D (%)",
-             "Precisión Conv2D (%)", "Recall Conv2D (%)", "F1 Conv2D (%)", "Diferencia F1 (2D - 1D)"]]
+hay_1d_2d = "conv1d" in MODELOS and "conv2d" in MODELOS
+por_sena = [["Seña"] + [f"{col} {NOMBRE[m]} (%)" for m in MODELOS for col in ("Precisión", "Recall", "F1")]
+            + (["Diferencia F1 (2D - 1D)"] if hay_1d_2d else [])]
 for s in sorted(prom):
     v = {k: pct(np.mean(lst)) for k, lst in prom[s].items()}
-    por_sena.append([s, v[("conv1d", "precision")], v[("conv1d", "recall")], v[("conv1d", "f1")],
-                     v[("conv2d", "precision")], v[("conv2d", "recall")], v[("conv2d", "f1")],
-                     round(v[("conv2d", "f1")] - v[("conv1d", "f1")], 1)])
+    fila = [s] + [v[(m, met)] for m in MODELOS for met in ("precision", "recall", "f1")]
+    if hay_1d_2d:
+        fila.append(round(v[("conv2d", "f1")] - v[("conv1d", "f1")], 1))
+    por_sena.append(fila)
 
 # ---- Hoja 4: Detalle (crudo, cada seña en cada semilla)
 detalle = [["Modelo", "Semilla", "Seña", "Precisión (%)", "Recall (%)", "F1 (%)", "N° muestras de prueba"]]
@@ -79,7 +84,7 @@ for m in MODELOS:
         detalle.append([m.upper(), int(x["semilla"]), x["sena"], pct(x["precision"]), pct(x["recall"]),
                         pct(x["f1"]), int(x["soporte"])])
 
-# ---- Hojas 5 y 6: matrices de confusión (suma de las semillas)
+# ---- Hojas de matrices de confusión, una por modelo (suma de las semillas)
 matrices = {}
 for m in MODELOS:
     with open(f"data/matriz_{m}.csv", encoding="utf-8") as fh:
@@ -91,7 +96,7 @@ for m in MODELOS:
         tabla.append([f[0]] + v + [sum(v), round(100 * v[i] / max(1, sum(v)), 1)])
     matrices[m] = tabla
 
-# ---- Hoja 7: historial de entrenamiento
+# ---- Última hoja: historial de entrenamiento
 historial = [["Modelo", "Semilla", "Época", "Loss entrenamiento", "Accuracy entrenamiento (%)",
               "Loss validación", "Accuracy validación (%)"]]
 for m in MODELOS:
@@ -102,10 +107,9 @@ for m in MODELOS:
 # ---- Escribir el Excel
 wb = Workbook()
 wb.remove(wb.active)                                     # quita la hoja vacía por defecto
-for nombre, tabla in (("Resumen", resumen), ("Por semilla", por_semilla),
-                      ("Por seña", por_sena), ("Detalle señas", detalle),
-                      ("Matriz Conv1D", matrices["conv1d"]), ("Matriz Conv2D", matrices["conv2d"]),
-                      ("Historial", historial)):
+hojas = ([("Resumen", resumen), ("Por semilla", por_semilla), ("Por seña", por_sena), ("Detalle señas", detalle)]
+         + [(f"Matriz {NOMBRE[m]}", matrices[m]) for m in MODELOS] + [("Historial", historial)])
+for nombre, tabla in hojas:
     ws = wb.create_sheet(nombre)
     for fila in tabla:
         ws.append(fila)
@@ -131,4 +135,4 @@ for fila in resumen[1:]:
     print(f"{fila[0]:7s} accuracy {fila[1]:5.1f} ± {fila[2]:4.1f}%  |  F1 {fila[3]:5.1f} ± {fila[4]:4.1f}%  |  "
           f"{fila[5]:,} parámetros  |  {fila[6]} KB  |  {fila[7]} ms/seña")
 print(f"Semillas: {', '.join(semillas)}")
-print(f"\nGuardado: {SALIDA}  (7 hojas, incluidas las matrices de confusión)")
+print(f"\nGuardado: {SALIDA}  ({len(hojas)} hojas, incluidas las matrices de confusión)")

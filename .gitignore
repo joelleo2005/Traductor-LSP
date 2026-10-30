@@ -2,6 +2,7 @@
 modelo/data/*
 !modelo/data/.gitkeep
 modelo/src/data/
+modelo/data_base_30f/
 
 # Código antiguo que ya no forma parte del pipeline
 modelo/old/
@@ -37,3 +38,4 @@ local.properties
 *.log
 Thumbs.db
 .DS_Store
+.venv-torch/

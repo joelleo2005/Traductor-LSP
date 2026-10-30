@@ -1,46 +1,45 @@
 """
-Modelo BASE: red convolucional 1D (Conv1D).
+Modelo BASE Conv1D (PyTorch).
 
-Trata cada seña como una serie de tiempo: 30 fotogramas x 258 valores por fotograma.
-Las convoluciones se deslizan solo en el eje del tiempo y en cada paso miran los 258 valores a la vez.
+Trata cada seña como una serie de tiempo: fotogramas x 258 valores por fotograma.
+La configuración de entrenamiento está en comun.CONFIG (la misma para los dos modelos).
 
-Ejecutar desde la carpeta modelo/:
+Ejecutar desde la carpeta modelo/ (evaluación final con 5 semillas):
     python src/entrenar_conv1d.py --semillas 1 2 3 4 5
 
-La carga de datos, la partición, el aumento, el entrenamiento, la evaluación y los CSV de resultados
-están en comun.py (son los mismos para Conv1D y Conv2D).
+Los resultados se guardan en data/ (resultados_conv1d.csv, historial_conv1d.csv, modelo_conv1d.pt, ...).
 """
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.regularizers import l2
+import torch.nn as nn
 
 from comun import ejecutar
 
 
-def modelo_conv1d(n_clases):
-    """Construye la Conv1D (≈ 84 mil parámetros). Entrada (30, 258) -> probabilidad de cada una de las n_clases."""
-    return keras.Sequential([
-        keras.Input(shape=(30, 258)),
-        # Bloque 1: 64 filtros que miran 3 fotogramas seguidos
-        layers.Conv1D(64, 3, activation="relu", padding="same", kernel_regularizer=l2(1e-4)),
-        layers.BatchNormalization(),
-        layers.MaxPooling1D(2),                     # 30 -> 15 fotogramas
-        # Bloque 2: 128 filtros sobre patrones de movimiento más largos
-        layers.Conv1D(128, 3, activation="relu", padding="same", kernel_regularizer=l2(1e-4)),
-        layers.BatchNormalization(),
-        layers.GlobalAveragePooling1D(),            # promedio en el tiempo -> vector de 128
-        # Clasificador
-        layers.Dropout(0.5),
-        layers.Dense(64, activation="relu"),
-        layers.Dropout(0.5),
-        layers.Dense(n_clases, activation="softmax"),
-    ], name="conv1d")
+class Conv1DModelo(nn.Module):
+    """Conv1D (≈ 84 mil parámetros). Entrada (B, fotogramas, 258) -> puntaje de cada una de las n_clases."""
+    def __init__(self, n_clases, forma_entrada, dropout=0.5):
+        super().__init__()
+        _, n_valores = forma_entrada                               # (fotogramas, 258)
+        bn = dict(eps=1e-3, momentum=0.01)                         # mismos valores que la versión inicial en Keras
+        self.red = nn.Sequential(
+            # Bloque 1: 64 filtros que miran 3 fotogramas seguidos
+            nn.Conv1d(n_valores, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm1d(64, **bn),
+            nn.MaxPool1d(2),                                       # 48 -> 24 fotogramas
+            # Bloque 2: 128 filtros sobre patrones de movimiento más largos
+            nn.Conv1d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm1d(128, **bn),
+            nn.AdaptiveAvgPool1d(1), nn.Flatten(),                 # promedio en el tiempo -> vector de 128
+            # Clasificador
+            nn.Dropout(dropout), nn.Linear(128, 64), nn.ReLU(),
+            nn.Dropout(dropout), nn.Linear(64, n_clases),           # softmax va dentro de la pérdida
+        )
+
+    def forward(self, x):
+        return self.red(x.transpose(1, 2))                         # Conv1d espera (B, canales, tiempo)
 
 
 def preparar_entrada(X):
-    """La Conv1D usa la secuencia tal cual: (N, 30, 258)."""
+    """La Conv1D usa la secuencia tal cual: (N, fotogramas, 258)."""
     return X.astype("float32")
 
 
 if __name__ == "__main__":
-    ejecutar("conv1d", modelo_conv1d, preparar_entrada)
+    ejecutar("conv1d", Conv1DModelo, preparar_entrada)
